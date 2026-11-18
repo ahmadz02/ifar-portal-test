@@ -345,7 +345,7 @@ function stepBank() {
         ${tInput('bank.name', 'Bank Name')}${tInput('bank.accountNo', 'Bank Account Number')}
         ${tInput('bank.branch', 'Branch')}${tInput('bank.taxNo', 'Income Tax Number', { req: false, hint: 'Optional' })}
       </div></div>
-    ${secOpen('bank_references', 'References (optional)')}
+    ${secOpen('bank_references', 'References (Please provide at least 2 references)')}
       <p class="text-xs text-slate-500 mb-2">Optional. If you add a reference, please complete all three fields of that row.</p>
       ${errors.references ? `<p class="text-[11px] text-rose-600 mb-1">${E(errors.references)}</p>` : ''}
       ${listRows('references', ['name', 'designation', 'phone'], ['Name', 'Designation', 'Telephone No.'], false)}
