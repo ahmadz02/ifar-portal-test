@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IFAR Applications | Super Admin</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../supabase-config.js"></script>
+<script src="admin-common.js"></script>
+<script src="../recruit/ifar-logo.js"></script>
+<script src="../recruit/ifar-shared.js"></script>
+<script src="../recruit/ifar-pdf.js"></script>
+<style>.brand-navy{color:#212F6E}.bg-brand-navy{background-color:#212F6E}</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+<header class="bg-[#212F6E] text-white"><div class="max-w-7xl mx-auto px-5 h-16 flex justify-between items-center">
+  <a href="admin-dashboard.html" class="font-bold">← Super Admin</a>
+  <div class="flex gap-3 text-xs"><span id="admin-email"></span><button onclick="adminLogout()">Logout</button></div></div></header>
+
+<main class="max-w-7xl mx-auto p-5">
+  <!-- LIST -->
+  <section id="view-list">
+    <h1 class="text-2xl font-bold">IFAR Applications</h1>
+    <p class="text-sm text-slate-500">Applications sent to AD by recruiting IFARs. Fill in the official-use details, then close, or return to the candidate for correction.</p>
+    <section class="bg-white border rounded-2xl p-4 mt-5 grid md:grid-cols-4 gap-3">
+      <input id="search" class="border rounded-xl px-3 py-2" placeholder="Search reference, applicant or IFAR">
+      <select id="status" class="border rounded-xl px-3 py-2">
+        <option value="">All statuses</option><option value="SENT_TO_AD">With AD</option><option value="RETURNED">Returned</option><option value="SUBMITTED">With IFAR (resubmitted)</option><option value="CLOSED">Closed</option>
+      </select>
+      <input id="monthYear" type="month" class="border rounded-xl px-3 py-2" title="Filter by month/year sent">
+    </section>
+    <section class="bg-white border rounded-2xl mt-5 overflow-x-auto">
+      <table class="w-full text-sm min-w-[950px]">
+        <thead class="bg-slate-100 text-left"><tr><th class="p-3">Reference / Applicant</th><th class="p-3">Recruited by (IFAR)</th><th class="p-3">Sent to AD</th><th class="p-3">Status</th><th class="p-3">Action</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </section>
+  </section>
+
+  <!-- DETAIL -->
+  <section id="view-detail" class="hidden max-w-4xl mx-auto">
+    <div id="detail" class="bg-white border rounded-2xl shadow-md p-6 sm:p-8 space-y-6"></div>
+  </section>
+</main>
+
+<!-- RETURN MODAL -->
+<div id="modal-return" class="fixed inset-0 bg-slate-900/60 z-50 hidden flex items-start justify-center p-4 overflow-y-auto">
+  <div class="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl my-8">
+    <div class="flex justify-between items-center border-b pb-3">
+      <div><h3 class="text-xl font-bold">Return to candidate</h3>
+        <p class="text-xs text-slate-500">The candidate is emailed the reason and the same link reopens. The recruiting IFAR is copied.</p></div>
+      <button onclick="closeModal('modal-return')" class="text-slate-400 p-2">✕</button>
+    </div>
+    <div><label class="block text-xs font-semibold uppercase mb-1">Reason *</label>
+      <textarea id="ret-reason" rows="3" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"></textarea></div>
+    <div><p class="block text-xs font-semibold uppercase mb-1">Highlight sections to review (optional)</p><div id="ret-flags" class="grid sm:grid-cols-2 gap-1"></div></div>
+    <div class="pt-3 border-t flex justify-end gap-3">
+      <button onclick="closeModal('modal-return')" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-sm">Cancel</button>
+      <button id="ret-submit" onclick="submitReturn()" class="px-5 py-2 rounded-xl bg-rose-600 text-white text-sm font-medium">Return to candidate</button>
+    </div>
+  </div>
+</div>
+<div id="admin-toast" class="hidden"></div>
+
+<script>
+  if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  let apps = [], activeId = null;
+
+  function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+  async function load() {
+    const q = await supabaseClient.from('ifar_applications').select('*').not('sent_to_ad_at', 'is', null).order('sent_to_ad_at', { ascending: false });
+    if (q.error) return showAdminToast(q.error.message, true);
+    apps = q.data || [];
+    const ev = await supabaseClient.from('ifar_application_audit_events').select('*').order('occurred_at', { ascending: true });
+    const g = {};
+    (ev.data || []).forEach(e => { (g[e.application_id] = g[e.application_id] || []).push(e); });
+    apps.forEach(a => { a.auditEvents = g[a.id] || []; });
+    render();
+    if (!document.getElementById('view-detail').classList.contains('hidden') && activeId) openDetail(activeId, true);
+  }
+
+  function render() {
+    const t = document.getElementById('search').value.toLowerCase(), s = document.getElementById('status').value, my = document.getElementById('monthYear').value;
+    const list = apps.filter(a => (!t || `${a.reference_no} ${a.form_data?.name || ''} ${a.candidate_email} ${a.recruiter_name || ''} ${a.recruiter_email || ''}`.toLowerCase().includes(t))
+      && (!s || a.status === s) && (!my || String(a.sent_to_ad_at || '').slice(0, 7) === my));
+    document.getElementById('rows').innerHTML = list.length ? list.map(a => {
+      const withAd = a.status === 'SENT_TO_AD';
+      const note = a.status === 'RETURNED' ? '<div class="text-xs text-slate-500">With candidate</div>' : a.status === 'SUBMITTED' ? '<div class="text-xs text-slate-500">With recruiting IFAR</div>' : '';
+      return `<tr class="border-t">
+        <td class="p-3"><b>${ifarEsc(a.form_data?.name || a.candidate_name || a.candidate_email)}</b><div class="font-mono text-xs">${ifarEsc(a.reference_no)}</div><div class="text-xs text-slate-500">${ifarEsc(a.candidate_email)}</div></td>
+        <td class="p-3">${ifarEsc(a.recruiter_name)}<div class="text-xs text-slate-500">${ifarEsc(a.recruiter_email)}</div></td>
+        <td class="p-3">${adminDate(a.sent_to_ad_at)}</td>
+        <td class="p-3">${ifarStatusBadge(a)}${note}</td>
+        <td class="p-3"><button onclick="openDetail('${a.id}')" class="${withAd ? 'bg-[#212F6E] text-white' : 'border'} px-3 py-2 rounded-lg">${withAd ? 'Review' : 'View'}</button></td></tr>`;
+    }).join('') : `<tr><td colspan="5" class="p-10 text-center text-slate-400">No applications found</td></tr>`;
+  }
+
+  // ---------------------------------------------------------------- detail
+  function openDetail(id, keep) {
+    activeId = id;
+    const a = apps.find(x => x.id === id); if (!a) return;
+    document.getElementById('view-list').classList.add('hidden');
+    document.getElementById('view-detail').classList.remove('hidden');
+    const ou = a.official_use || {};
+    const editable = a.status === 'SENT_TO_AD';
+    const inp = (k, label, ph) => `<div><label class="block text-[11px] font-semibold uppercase text-slate-500 mb-1">${label}</label>
+      <input id="ou-${k}" value="${ifarEsc(ou[k] || '')}" ${editable ? '' : 'disabled'} placeholder="${ph || ''}" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm ${editable ? '' : 'bg-slate-100'}"></div>`;
+    const events = (a.auditEvents || []).map(e => `<div class="flex justify-between gap-4"><span class="text-emerald-400">&check; ${ifarEsc(ifarAuditLabel(e))}${e.actor_label ? ` <span class="text-slate-500">· ${ifarEsc(e.actor_label)}</span>` : ''}</span><span class="text-slate-500 shrink-0">${ifarFmtDate(e.occurred_at, true)}</span></div>`).join('');
+    document.getElementById('detail').innerHTML = `
+      <div class="flex justify-between items-start border-b pb-4">
+        <div><h2 class="text-lg font-bold uppercase">IFAR Application</h2>
+          <p class="text-xs text-slate-500 font-mono">${ifarEsc(a.reference_no)} · recruited by ${ifarEsc(a.recruiter_name)}</p>
+          <div class="mt-2">${ifarStatusBadge(a)}</div></div>
+        <button onclick="closeDetail()" class="text-xs text-slate-500 hover:text-slate-800">← Back</button>
+      </div>
+      ${a.status === 'RETURNED' ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-900"><b>Returned by ${a.returned_by_role === 'AD' ? 'AD' : 'IFAR'}:</b> ${ifarEsc(a.return_reason)}<p class="text-xs mt-1">Waiting for the candidate / recruiting IFAR. It will come back here once the IFAR sends it again.</p></div>` : ''}
+      ${a.status === 'SUBMITTED' ? '<div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-900">Resubmitted by the candidate. Waiting for the recruiting IFAR to send it to AD again.</div>' : ''}
+      ${ifarSummaryHtml(a)}
+      <div class="space-y-3">
+        <h4 class="text-xs font-bold uppercase tracking-wider text-[#212F6E] bg-slate-100 rounded px-2 py-1">For official use only</h4>
+        <div class="grid sm:grid-cols-2 gap-3">
+          <div><label class="block text-[11px] font-semibold uppercase text-slate-500 mb-1">Recruited / referred by</label><input disabled value="${ifarEsc(a.recruiter_name)}" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-slate-100"></div>
+          ${inp('verifiedBy', 'Verified by & date')}${inp('approvedBy', 'Approved by & date')}
+          ${inp('rank', 'Wealth Planner Rank')}${inp('code', 'Wealth Planner Code')}
+          <div class="sm:col-span-2"><label class="block text-[11px] font-semibold uppercase text-slate-500 mb-1">Missing documents / comments (if any)</label>
+            <textarea id="ou-comments" rows="3" ${editable ? '' : 'disabled'} class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm ${editable ? '' : 'bg-slate-100'}">${ifarEsc(ou.comments || '')}</textarea></div>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2 pt-2 border-t">
+        ${a.pdf_path ? `<button onclick="openPdf('${a.id}')" class="border px-4 py-2.5 rounded-xl text-sm font-semibold">Download PDF${a.status === 'CLOSED' ? ' (final)' : ''}</button>` : ''}
+        ${editable ? `<button onclick="saveOfficial()" class="border px-4 py-2.5 rounded-xl text-sm font-semibold">Save official-use details</button>
+          <button id="btn-close" onclick="closeApplication()" class="bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold">Close &amp; generate final PDF</button>
+          <button onclick="openReturn()" class="bg-rose-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold">Return to candidate</button>` : ''}
+      </div>
+      <div class="space-y-2"><h4 class="text-xs font-bold uppercase tracking-wider text-slate-400">Audit log</h4>
+        <div class="bg-slate-900 text-slate-300 p-4 rounded-xl text-xs font-mono space-y-2">${events || '<span class="text-slate-500">No events</span>'}</div></div>`;
+    if (!keep) window.scrollTo({ top: 0 });
+  }
+  function closeDetail() { document.getElementById('view-detail').classList.add('hidden'); document.getElementById('view-list').classList.remove('hidden'); }
+
+  function readOfficial() {
+    const g = id => (document.getElementById(id)?.value || '').trim();
+    return { verifiedBy: g('ou-verifiedBy'), approvedBy: g('ou-approvedBy'), rank: g('ou-rank'), code: g('ou-code'), comments: g('ou-comments') };
+  }
+
+  async function openPdf(id) {
+    const a = apps.find(x => x.id === id); if (!a?.pdf_path) return;
+    const q = await supabaseClient.storage.from(IFAR_BUCKET).createSignedUrl(a.pdf_path, 120);
+    if (q.error) return showAdminToast(q.error.message, true);
+    window.open(q.data.signedUrl, '_blank', 'noopener');
+  }
+
+  async function saveOfficial() {
+    const { error } = await supabaseClient.rpc('admin_save_official_use', { p_id: activeId, p_official: readOfficial() });
+    if (error) return showAdminToast(error.message, true);
+    showAdminToast('Official-use details saved.'); await load();
+  }
+
+  async function closeApplication() {
+    const a = apps.find(x => x.id === activeId); if (!a) return;
+    if (!confirm('Close this application and generate the final PDF with the official-use details?')) return;
+    const btn = document.getElementById('btn-close'); const html = btn.innerHTML; btn.disabled = true;
+    try {
+      const official = readOfficial();
+      btn.innerHTML = 'Building PDF…';
+      const built = await buildIfarApplicationPDF({ ...a, official_use: official }, { auditEvents: a.auditEvents });
+      const path = `${a.id}/final/${Date.now()}-${built.filename}`;
+      btn.innerHTML = 'Uploading…';
+      const up = await supabaseClient.storage.from(IFAR_BUCKET).upload(path, built.blob, { contentType: 'application/pdf' });
+      if (up.error) throw new Error(up.error.message);
+      const { error } = await supabaseClient.rpc('admin_close_ifar_application', { p_id: a.id, p_official: official, p_pdf_path: path });
+      if (error) throw new Error(error.message);
+      showAdminToast('Application closed. Final PDF saved.');
+    } catch (e) {
+      console.error(e); showAdminToast(e.message || 'Unable to close.', true);
+      btn.disabled = false; btn.innerHTML = html; return;
+    }
+    await load();
+  }
+
+  function openReturn() {
+    document.getElementById('ret-reason').value = '';
+    document.getElementById('ret-flags').innerHTML = Object.entries(IFAR_FLAG_SECTIONS).map(([k, v]) =>
+      `<label class="flex items-center gap-2 text-sm"><input type="checkbox" value="${k}" class="ret-flag"> ${ifarEsc(v)}</label>`).join('');
+    document.getElementById('modal-return').classList.remove('hidden');
+  }
+
+  async function submitReturn() {
+    const reason = document.getElementById('ret-reason').value.trim();
+    if (!reason) return showAdminToast('Please enter a reason.', true);
+    const flags = Array.from(document.querySelectorAll('.ret-flag:checked')).map(c => c.value);
+    const btn = document.getElementById('ret-submit'); btn.disabled = true;
+    const r = await supabaseClient.rpc('admin_return_ifar_application', { p_id: activeId, p_reason: reason, p_flags: flags });
+    if (r.error) { btn.disabled = false; return showAdminToast(r.error.message, true); }
+    const f = await supabaseClient.functions.invoke('ifar-application-email', { body: { mode: 'return_notice', applicationId: activeId } });
+    btn.disabled = false; closeModal('modal-return');
+    if (f.error || !f.data?.success) showAdminToast('Returned, but the email failed: ' + (f.data?.error || f.error?.message || 'unknown error'), true);
+    else showAdminToast(`Returned. ${f.data.recipient} was emailed (IFAR copied).`);
+    await load();
+  }
+
+  document.getElementById('search').addEventListener('input', render);
+  document.getElementById('status').addEventListener('input', render);
+  document.getElementById('monthYear').addEventListener('input', render);
+  (async () => { if (await requireSuperAdmin()) await load(); })();
+</script>
+</body>
+</html>
