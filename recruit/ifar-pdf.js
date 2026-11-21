@@ -286,7 +286,7 @@ async function buildIfarApplicationPDF(app, opts = {}) {
     }
     y += 10;
   }
-  triTable('EMPLOYMENT HISTORY', ['Name of Company/Address', 'Position Held', 'Period'], [CW * 0.46, CW * 0.30, CW * 0.24], fd.employment || [], 4, 28, ['company', 'position', 'period'], 1);
+  triTable('EMPLOYMENT HISTORY', ['Name of Company/Address', 'Position Held', 'Start - End'], [CW * 0.46, CW * 0.30, CW * 0.24], fd.employment || [], 4, 28, ['company', 'position', 'period'], 1);
   triTable('EDUCATION BACKGROUND', ['Name of Institution', 'Academic Qualification', 'Year'], [CW * 0.38, CW * 0.40, CW * 0.22], fd.education || [], 4, 28, ['institution', 'qualification', 'year'], 1);
 
   bar('BANK ACCOUNT INFORMATION', '(For Payment of Fees/Commissions)');
@@ -313,7 +313,7 @@ async function buildIfarApplicationPDF(app, opts = {}) {
     y += Math.max(h, 12) + 5;
   };
   item(1, 'Two recent passport sized colour photograph', false);
-  item(2, 'Two copies of NRIC (colour front & back)', has('nric_front') && has('nric_back'));
+  item(2, 'Copy of NRIC (colour, front & back)', has('nric'));
   item(3, 'Certified true copy of academic and/or professional certificates.', has('certificates'), '(IC and certificates are to be certified by a Commissioner for Oaths or a lawyer)');
   item(4, 'Copy of authorization card, Insurance Authority Card & FIMM Card (if any)', false);
   item(5, 'Proof of valid membership FPAM / MFPC', false);
@@ -386,7 +386,7 @@ async function buildIfarApplicationPDF(app, opts = {}) {
         pages = [];
         newPage();
         pdf.setFont('helvetica', 'bold'); pdf.setFontSize(11);
-        pdf.text(`Checklist Item ${slot.item} - ${slot.label}`, M, y + 8);
+        pdf.text(clean(ifarSlotTitle(slot)), M, y + 8);
         pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(180, 0, 0);
         pdf.text(clean(`File could not be embedded: ${f.name} (${e.message || e})`), M, y + 26);
         pdf.setTextColor(0);
@@ -394,7 +394,7 @@ async function buildIfarApplicationPDF(app, opts = {}) {
       pages.forEach((pg, idx) => {
         newPage();
         pdf.setFont('helvetica', 'bold'); pdf.setFontSize(11);
-        pdf.text(clean(`Checklist Item ${slot.item} - ${slot.label}`), M, y + 8);
+        pdf.text(clean(ifarSlotTitle(slot)), M, y + 8);
         pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8.5); pdf.setTextColor(90);
         pdf.text(clean(`File: ${f.name}${pages.length > 1 ? `  (page ${idx + 1} of ${pages.length}${pages.truncated ? ', first ' + pages.length + ' pages shown' : ''})` : ''}`), M, y + 21);
         pdf.setTextColor(0);

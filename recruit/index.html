@@ -243,7 +243,7 @@
           <div class="text-xs text-slate-400 font-mono mt-0.5">${ifarEsc(a.reference_no)}</div></td>
         <td class="px-6 py-4 text-xs text-slate-500">${ifarFmtDate(a.created_at)}</td>
         <td class="px-6 py-4 text-xs text-slate-500">${when}</td>
-        <td class="px-6 py-4">${ifarStatusBadge(a)}</td>
+        <td class="px-6 py-4">${ifarStatusBadge(a)}${ifarMilestoneBadges(a)}</td>
         <td class="px-6 py-4 text-right space-x-1 whitespace-nowrap">${acts}</td></tr>`;
     }).join('');
   }
@@ -344,7 +344,7 @@
       <div class="flex justify-between items-start border-b border-slate-100 pb-4">
         <div><h2 class="text-lg font-bold text-slate-900 uppercase">IFAR Application</h2>
           <p class="text-xs text-slate-500 font-mono">${ifarEsc(a.reference_no)} · ${ifarEsc(a.candidate_email)}</p>
-          <div class="mt-2">${ifarStatusBadge(a)}</div></div>
+          <div class="mt-2">${ifarStatusBadge(a)}${ifarMilestoneBadges(a)}</div></div>
         <button onclick="closeReview()" class="text-xs text-slate-500 hover:text-slate-800"><i class="fa-solid fa-arrow-left mr-1"></i>Back</button>
       </div>
       ${a.status === 'RETURNED' ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-900"><b>Returned by ${a.returned_by_role === 'AD' ? 'AD' : 'IFAR'}:</b> ${ifarEsc(a.return_reason)}<p class="text-xs mt-1">Waiting for the candidate to correct and resubmit.</p></div>` : ''}

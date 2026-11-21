@@ -49,6 +49,21 @@
   </section>
 </main>
 
+<!-- MILESTONE CONFIRM MODAL -->
+<div id="modal-ms" class="fixed inset-0 bg-slate-900/60 z-50 hidden flex items-start justify-center p-4 overflow-y-auto">
+  <div class="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl my-8">
+    <h3 id="ms-title" class="text-xl font-bold"></h3>
+    <p id="ms-text" class="text-sm text-slate-600"></p>
+    <div><label class="block text-xs font-semibold uppercase mb-1">Remark (optional, included in the email)</label>
+      <textarea id="ms-remark" rows="3" placeholder="e.g. letter reference number" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm"></textarea></div>
+    <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">This can only be done once for this application and cannot be undone.</p>
+    <div class="pt-3 border-t flex justify-end gap-3">
+      <button onclick="closeModal('modal-ms')" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-sm">Cancel</button>
+      <button id="ms-confirm" onclick="submitMilestone()" class="px-5 py-2 rounded-xl bg-[#212F6E] text-white text-sm font-medium">Confirm</button>
+    </div>
+  </div>
+</div>
+
 <!-- RETURN MODAL -->
 <div id="modal-return" class="fixed inset-0 bg-slate-900/60 z-50 hidden flex items-start justify-center p-4 overflow-y-auto">
   <div class="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl my-8">
@@ -139,9 +154,9 @@
         <td class="p-3"><b>${ifarEsc(a.form_data?.name || a.candidate_name || a.candidate_email)}</b><div class="font-mono text-xs">${ifarEsc(a.reference_no)}</div><div class="text-xs text-slate-500">${ifarEsc(a.candidate_email)}</div></td>
         <td class="p-3">${ifarEsc(a.recruiter_name)}<div class="text-xs text-slate-500">${ifarEsc(a.recruiter_email)}</div></td>
         <td class="p-3">${a.sent_to_ad_at ? adminDate(a.sent_to_ad_at) : '<span class="text-slate-400">Not sent yet</span>'}</td>
-        <td class="p-3">${ifarStatusBadge(a)}${note}</td>
-        <td class="p-3 whitespace-nowrap">${open ? `<button onclick="openShare('${a.id}')" class="border px-3 py-2 rounded-lg">Link</button> <button onclick="delInvite('${a.id}')" class="border border-rose-200 text-rose-600 px-3 py-2 rounded-lg">Delete</button>`
-        : `<button onclick="openDetail('${a.id}')" class="${withAd ? 'bg-[#212F6E] text-white' : 'border'} px-3 py-2 rounded-lg">${withAd ? 'Review' : 'View'}</button>`}</td></tr>`;
+        <td class="p-3">${ifarStatusBadge(a)}${note}${ifarMilestoneBadges(a)}</td>
+        <td class="p-3">${open ? `<button onclick="openShare('${a.id}')" class="border px-3 py-2 rounded-lg">Link</button> <button onclick="delInvite('${a.id}')" class="border border-rose-200 text-rose-600 px-3 py-2 rounded-lg">Delete</button>`
+        : `<button onclick="openDetail('${a.id}')" class="${withAd ? 'bg-[#212F6E] text-white' : 'border'} px-3 py-2 rounded-lg">${withAd ? 'Review' : 'View'}</button>`}${open ? '' : `<div class="mt-2 flex flex-wrap gap-1">${milestoneUi(a)}</div>`}</td></tr>`;
     }).join('') : `<tr><td colspan="5" class="p-10 text-center text-slate-400">No applications found</td></tr>`;
   }
 
@@ -160,7 +175,7 @@
       <div class="flex justify-between items-start border-b pb-4">
         <div><h2 class="text-lg font-bold uppercase">IFAR Application</h2>
           <p class="text-xs text-slate-500 font-mono">${ifarEsc(a.reference_no)} · recruited by ${ifarEsc(a.recruiter_name)}</p>
-          <div class="mt-2">${ifarStatusBadge(a)}</div></div>
+ <div class="mt-2">${ifarStatusBadge(a)}${ifarMilestoneBadges(a)}</div></div>
         <button onclick="closeDetail()" class="text-xs text-slate-500 hover:text-slate-800">← Back</button>
       </div>
       ${a.status === 'RETURNED' ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-900"><b>Returned by ${a.returned_by_role === 'AD' ? 'AD' : 'IFAR'}:</b> ${ifarEsc(a.return_reason)}<p class="text-xs mt-1">${isMine(a) ? 'Waiting for the candidate. It will come back here once they resubmit.' : 'Waiting for the candidate / recruiting IFAR. It will come back here once the IFAR sends it again.'}</p></div>` : ''}
@@ -177,6 +192,7 @@
         </div>
       </div>
       <div class="flex flex-wrap gap-2 pt-2 border-t">
+        ${milestoneUi(a)}
         ${a.pdf_path ? `<button onclick="openPdf('${a.id}')" class="border px-4 py-2.5 rounded-xl text-sm font-semibold">Download PDF${a.status === 'CLOSED' ? ' (final)' : ''}</button>` : ''}
         ${editable ? `<button onclick="saveOfficial()" class="border px-4 py-2.5 rounded-xl text-sm font-semibold">Save official-use details</button>
           <button id="btn-close" onclick="closeApplication()" class="bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold">Close &amp; generate final PDF</button>
@@ -186,6 +202,62 @@
         <div class="bg-slate-900 text-slate-300 p-4 rounded-xl text-xs font-mono space-y-2">${events || '<span class="text-slate-500">No events</span>'}</div></div>`;
     if (!keep) window.scrollTo({ top: 0 });
   }
+  // ---------------------------------------------------------------- milestones
+  // Interim letter first, then Sent to BNM. Each once only; off while the application is returned.
+  const MS = {
+    interim: { label: 'Interim Letter Issued', text: 'Confirm that the Interim Letter has been issued? The inviting IFAR will be notified by email.' },
+    bnm: { label: 'Sent to BNM', text: 'Confirm that this application has been sent to BNM? The applying IFAR and the inviting IFAR will be notified by email.' }
+  };
+  let msTarget = null;
+  function milestoneUi(a) {
+    const eligible = a.status === 'SENT_TO_AD' || a.status === 'CLOSED' || (a.status === 'SUBMITTED' && isMine(a));
+    const why = a.status === 'RETURNED' ? 'Returned to the candidate' : 'Not with AD yet';
+    const btn = (ms) => `<button ${eligible ? '' : `disabled title="${why}"`} onclick="openMilestone('${a.id}','${ms}')" class="px-3 py-2 rounded-lg text-xs font-semibold bg-teal-700 text-white ${eligible ? '' : 'opacity-40 cursor-not-allowed'}">${MS[ms].label}</button>`;
+    const resend = (ms) => `<button onclick="resendMilestone('${a.id}','${ms}')" class="px-3 py-2 rounded-lg text-xs font-semibold border border-amber-400 text-amber-700">Email failed – resend</button>`;
+    let h = '';
+    if (!a.interim_letter_at) h += btn('interim');
+    else if (!a.bnm_sent_at) h += btn('bnm');
+    if (a.interim_letter_at && !a.interim_email_at) h += resend('interim');
+    if (a.bnm_sent_at && !a.bnm_email_at) h += resend('bnm');
+    return h;
+  }
+  function openMilestone(id, ms) {
+    msTarget = { id, ms };
+    document.getElementById('ms-title').textContent = MS[ms].label;
+    document.getElementById('ms-text').textContent = MS[ms].text;
+    document.getElementById('ms-remark').value = '';
+    document.getElementById('ms-confirm').disabled = false;
+    document.getElementById('modal-ms').classList.remove('hidden');
+  }
+  async function sendMilestoneEmail(id, ms) {
+    const f = await supabaseClient.functions.invoke('ifar-application-email', { body: { mode: 'milestone_notice', applicationId: id, milestone: ms } });
+    if (f.error || !f.data?.success) {
+      let m = f.data?.error || f.error?.message || 'unknown error';
+      try { if (f.error?.context?.json) { const d = await f.error.context.json(); if (d?.error) m = d.error; } } catch (_) {}
+      return { ok: false, message: m };
+    }
+    return { ok: true, recipients: f.data.recipients || [] };
+  }
+  async function submitMilestone() {
+    if (!msTarget) return;
+    const { id, ms } = msTarget;
+    const btn = document.getElementById('ms-confirm'); btn.disabled = true;
+    const r = await supabaseClient.rpc('admin_mark_ifar_milestone', { p_id: id, p_milestone: ms, p_remark: document.getElementById('ms-remark').value.trim() });
+    if (r.error) { btn.disabled = false; return showAdminToast(r.error.message, true); }
+    closeModal('modal-ms');
+    const e = await sendMilestoneEmail(id, ms);
+    if (!e.ok) showAdminToast(`${MS[ms].label} recorded, but the email failed: ${e.message}. Use "Email failed – resend".`, true);
+    else showAdminToast(`${MS[ms].label} recorded. Emailed ${e.recipients.join(', ')}.`);
+    await load();
+  }
+  async function resendMilestone(id, ms) {
+    if (!confirm(`Resend the "${MS[ms].label}" email?`)) return;
+    const e = await sendMilestoneEmail(id, ms);
+    if (!e.ok) showAdminToast('Email failed: ' + e.message, true);
+    else showAdminToast(`Emailed ${e.recipients.join(', ')}.`);
+    await load();
+  }
+
   // ---------------------------------------------------------------- invite / share
   function openInvite() { document.getElementById('form-invite').reset(); document.getElementById('modal-invite').classList.remove('hidden'); }
 
