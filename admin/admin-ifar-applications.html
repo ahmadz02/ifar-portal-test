@@ -123,6 +123,7 @@
 
 <script>
   if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const RANKS = ['Wealth Manager', 'Senior Wealth Manager', 'Wealth Managing Director', 'TSI Wealth Planners'];
   let apps = [], activeId = null, myId = null;
   const OPEN_STATES = ['INVITED', 'OPENED', 'DRAFT'];
   const isMine = a => !!myId && a.recruiter_id === myId;
@@ -167,6 +168,7 @@
     document.getElementById('view-list').classList.add('hidden');
     document.getElementById('view-detail').classList.remove('hidden');
     const ou = a.official_use || {};
+    const rankOptions = RANKS.concat(ou.rank && !RANKS.includes(ou.rank) ? [ou.rank] : []);
     const editable = a.status === 'SENT_TO_AD' || (a.status === 'SUBMITTED' && isMine(a));
     const inp = (k, label, ph) => `<div><label class="block text-[11px] font-semibold uppercase text-slate-500 mb-1">${label}</label>
       <input id="ou-${k}" value="${ifarEsc(ou[k] || '')}" ${editable ? '' : 'disabled'} placeholder="${ph || ''}" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm ${editable ? '' : 'bg-slate-100'}"></div>`;
@@ -183,13 +185,20 @@
       ${ifarSummaryHtml(a)}
       <div class="space-y-3">
         <h4 class="text-xs font-bold uppercase tracking-wider text-[#212F6E] bg-slate-100 rounded px-2 py-1">For official use only</h4>
-        <div class="grid sm:grid-cols-2 gap-3">
+        <div class="grid sm:grid-cols-3 gap-3">
           <div><label class="block text-[11px] font-semibold uppercase text-slate-500 mb-1">Recruited / referred by</label><input disabled value="${ifarEsc(a.recruiter_name)}" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-slate-100"></div>
-          ${inp('verifiedBy', 'Verified by & date')}${inp('approvedBy', 'Approved by & date')}
-          ${inp('rank', 'Wealth Planner Rank')}${inp('code', 'Wealth Planner Code')}
-          <div class="sm:col-span-2"><label class="block text-[11px] font-semibold uppercase text-slate-500 mb-1">Missing documents / comments (if any)</label>
-            <textarea id="ou-comments" rows="3" ${editable ? '' : 'disabled'} class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm ${editable ? '' : 'bg-slate-100'}">${ifarEsc(ou.comments || '')}</textarea></div>
+          ${inp('code', 'Wealth Planner Code')}
+          <div><label class="block text-[11px] font-semibold uppercase text-slate-500 mb-1">Wealth Planner Rank</label>
+            <select id="ou-rank" ${editable ? '' : 'disabled'} class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm ${editable ? 'bg-white' : 'bg-slate-100'}">
+              <option value="">Select rank</option>
+              ${rankOptions.map(r => `<option value="${ifarEsc(r)}" ${ou.rank === r ? 'selected' : ''}>${ifarEsc(r)}</option>`).join('')}
+            </select></div>
         </div>
+        <div class="grid sm:grid-cols-2 gap-3">
+          ${inp('verifiedBy', 'Verified by & date')}${inp('approvedBy', 'Approved by & date')}
+        </div>
+        <div><label class="block text-[11px] font-semibold uppercase text-slate-500 mb-1">Missing documents / comments (if any)</label>
+          <textarea id="ou-comments" rows="3" ${editable ? '' : 'disabled'} class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm ${editable ? '' : 'bg-slate-100'}">${ifarEsc(ou.comments || '')}</textarea></div>
       </div>
       <div class="flex flex-wrap gap-2 pt-2 border-t">
         ${milestoneUi(a)}
